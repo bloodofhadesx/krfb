@@ -9,7 +9,10 @@
 
 // system
 #include <cstring>
+#include <fcntl.h>
+#include <memory>
 #include <sys/mman.h>
+#include <vector>
 
 // Qt
 #include <QCoreApplication>
@@ -28,12 +31,14 @@
 // pipewire
 #include <climits>
 
+#include <epoxy/egl.h>
+#include <epoxy/gl.h>
+
 #include "krfb_fb_pipewire_debug.h"
 #include "pw_framebuffer.h"
 #include "screencasting.h"
 #include "xdp_dbus_remotedesktop_interface.h"
 #include "xdp_dbus_screencast_interface.h"
-#include <DmaBufHandler>
 #include <PipeWireSourceStream>
 
 static const int BYTES_PER_PIXEL = 4;
@@ -105,7 +110,18 @@ private:
     bool isValid = true;
     std::unique_ptr<PipeWireSourceStream> stream;
     std::optional<PipeWireCursor> cursor;
-    DmaBufHandler m_dmabufHandler;
+
+    // EGL resources for DMA-BUF readback (cached across frames)
+    struct EglResources {
+        EGLDisplay display = EGL_NO_DISPLAY;
+        EGLContext context = EGL_NO_CONTEXT;
+        GLuint texture = 0;
+        GLuint fbo = 0;
+    };
+    EglResources egl;
+
+    bool setupEgl();
+    bool downloadFrame(const PipeWireFrame &frame, QImage &qimage);
 };
 
 PWFrameBuffer::Private::Private(PWFrameBuffer *q)
@@ -376,7 +392,7 @@ void PWFrameBuffer::Private::handleFrame(const PipeWireFrame &frame)
         const QSize size = {frame.dmabuf->width, frame.dmabuf->height};
         setVideoSize(size);
         QImage src(reinterpret_cast<uchar *>(q->fb), size.width(), size.height(), QImage::Format_RGB32);
-        if (!m_dmabufHandler.downloadFrame(src, frame)) {
+        if (!downloadFrame(frame, src)) {
             stream->renegotiateModifierFailed(frame.format, frame.dmabuf->modifier);
             qCDebug(KRFB_FB_PIPEWIRE) << "Failed to download frame.";
             return;
@@ -414,6 +430,214 @@ void PWFrameBuffer::Private::setVideoSize(const QSize &size)
 
 PWFrameBuffer::Private::~Private()
 {
+    if (egl.display != EGL_NO_DISPLAY) {
+        if (egl.texture) {
+            glDeleteTextures(1, &egl.texture);
+        }
+        if (egl.fbo) {
+            glDeleteFramebuffers(1, &egl.fbo);
+        }
+        if (egl.context != EGL_NO_CONTEXT) {
+            eglDestroyContext(egl.display, egl.context);
+        }
+        eglTerminate(egl.display);
+    }
+}
+
+bool PWFrameBuffer::Private::setupEgl()
+{
+    if (egl.display != EGL_NO_DISPLAY) {
+        return true;
+    }
+
+    // Get the Wayland display from QPA
+    auto *native = QGuiApplication::platformNativeInterface();
+    auto *wl_display = native ? static_cast<wl_display *>(native->nativeResourceForIntegration(QByteArrayLiteral("display"))) : nullptr;
+
+    EGLDisplay disp = EGL_NO_DISPLAY;
+    if (wl_display) {
+        disp = eglGetPlatformDisplay(EGL_PLATFORM_WAYLAND_KHR, wl_display, nullptr);
+    }
+    if (disp == EGL_NO_DISPLAY) {
+        disp = eglGetPlatformDisplay(EGL_PLATFORM_WAYLAND_KHR, EGL_DEFAULT_DISPLAY, nullptr);
+    }
+    if (disp == EGL_NO_DISPLAY) {
+        qCWarning(KRFB_FB_PIPEWIRE) << "setupEgl: no Wayland EGL display, trying default";
+        disp = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    }
+    if (disp == EGL_NO_DISPLAY) {
+        qCWarning(KRFB_FB_PIPEWIRE) << "setupEgl: failed to get EGL display";
+        return false;
+    }
+
+    EGLint major = 0, minor = 0;
+    if (!eglInitialize(disp, &major, &minor)) {
+        qCWarning(KRFB_FB_PIPEWIRE) << "setupEgl: eglInitialize failed";
+        return false;
+    }
+
+    bool is_gles = false;
+    if (!eglBindAPI(EGL_OPENGL_API)) {
+        qCWarning(KRFB_FB_PIPEWIRE) << "setupEgl: OpenGL API unavailable, trying OpenGL ES";
+        if (!eglBindAPI(EGL_OPENGL_ES_API)) {
+            qCWarning(KRFB_FB_PIPEWIRE) << "setupEgl: failed to bind any EGL API";
+            return false;
+        }
+        is_gles = true;
+    }
+
+    EGLConfig config;
+    EGLint count;
+    if (is_gles) {
+        const EGLint attribs[] = {
+            EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+            EGL_RED_SIZE, 8,
+            EGL_GREEN_SIZE, 8,
+            EGL_BLUE_SIZE, 8,
+            EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
+            EGL_NONE,
+        };
+        if (!eglChooseConfig(disp, attribs, &config, 1, &count)) {
+            qCWarning(KRFB_FB_PIPEWIRE) << "setupEgl: no ES3 config";
+            return false;
+        }
+    } else {
+        const EGLint attribs[] = {
+            EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+            EGL_RED_SIZE, 8,
+            EGL_GREEN_SIZE, 8,
+            EGL_BLUE_SIZE, 8,
+            EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
+            EGL_NONE,
+        };
+        if (!eglChooseConfig(disp, attribs, &config, 1, &count)) {
+            qCWarning(KRFB_FB_PIPEWIRE) << "setupEgl: no desktop GL config, trying ES3";
+            const EGLint es_attribs[] = {
+                EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+                EGL_RED_SIZE, 8,
+                EGL_GREEN_SIZE, 8,
+                EGL_BLUE_SIZE, 8,
+                EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
+                EGL_NONE,
+            };
+            if (!eglBindAPI(EGL_OPENGL_ES_API) || !eglChooseConfig(disp, es_attribs, &config, 1, &count)) {
+                return false;
+            }
+            is_gles = true;
+        }
+    }
+
+    if (is_gles) {
+        const EGLint ctx_attribs[] = {EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE};
+        egl.context = eglCreateContext(disp, config, EGL_NO_CONTEXT, ctx_attribs);
+    } else {
+        const EGLint ctx_attribs[] = {EGL_CONTEXT_OPENGL_DEBUG, EGL_TRUE, EGL_NONE};
+        egl.context = eglCreateContext(disp, config, EGL_NO_CONTEXT, ctx_attribs);
+    }
+
+    if (egl.context == EGL_NO_CONTEXT) {
+        qCWarning(KRFB_FB_PIPEWIRE) << "setupEgl: context creation failed";
+        return false;
+    }
+
+    if (!eglMakeCurrent(disp, EGL_NO_SURFACE, EGL_NO_SURFACE, egl.context)) {
+        qCWarning(KRFB_FB_PIPEWIRE) << "setupEgl: eglMakeCurrent failed";
+        return false;
+    }
+
+    egl.display = disp;
+    qCDebug(KRFB_FB_PIPEWIRE) << "setupEgl: EGL initialized (GLES=" << is_gles << ")";
+    return true;
+}
+
+bool PWFrameBuffer::Private::downloadFrame(const PipeWireFrame &frame, QImage &qimage)
+{
+    if (!setupEgl()) {
+        return false;
+    }
+
+    const auto &dmabuf = *frame.dmabuf;
+    if (dmabuf.planes.isEmpty()) {
+        qCWarning(KRFB_FB_PIPEWIRE) << "downloadFrame: no planes";
+        return false;
+    }
+
+    // Build EGL attrs for DMA-BUF import
+    // eglCreateImageKHR uses EGLint-based attributes
+    std::vector<EGLint> attribs;
+    attribs.reserve(4 + dmabuf.planes.size() * 3 + 1);
+    attribs.push_back(EGL_WIDTH);
+    attribs.push_back(dmabuf.width);
+    attribs.push_back(EGL_HEIGHT);
+    attribs.push_back(dmabuf.height);
+    attribs.push_back(EGL_LINUX_DRM_FOURCC_EXT);
+    attribs.push_back(static_cast<EGLint>(dmabuf.format));
+
+    for (int i = 0; i < dmabuf.planes.size(); i++) {
+        const auto &plane = dmabuf.planes[i];
+        // dup the FD: eglCreateImage takes ownership, PipeWireFrame owns the original
+        int dup_fd = fcntl(plane.fd, F_DUPFD_CLOEXEC, 3);
+        if (dup_fd < 0) {
+            qCWarning(KRFB_FB_PIPEWIRE) << "downloadFrame: failed to dup plane" << i << "fd";
+            return false;
+        }
+        attribs.push_back(EGL_DMA_BUF_PLANE0_FD_EXT + i * 3);
+        attribs.push_back(dup_fd);
+        attribs.push_back(EGL_DMA_BUF_PLANE0_OFFSET_EXT + i * 3);
+        attribs.push_back(static_cast<EGLint>(plane.offset));
+        attribs.push_back(EGL_DMA_BUF_PLANE0_PITCH_EXT + i * 3);
+        attribs.push_back(static_cast<EGLint>(plane.stride));
+    }
+    attribs.push_back(EGL_NONE);
+
+    EGLImageKHR image = eglCreateImageKHR(egl.display, EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, nullptr, attribs.data());
+    if (image == EGL_NO_IMAGE_KHR) {
+        qCWarning(KRFB_FB_PIPEWIRE) << "downloadFrame: eglCreateImageKHR failed";
+        return false;
+    }
+
+    auto releaseImage = qScopeGuard([&]() {
+        eglDestroyImageKHR(egl.display, image);
+    });
+
+    // Reuse texture + FBO across frames
+    if (!egl.texture) {
+        glGenTextures(1, &egl.texture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    }
+    if (!egl.fbo) {
+        glGenFramebuffers(1, &egl.fbo);
+    }
+
+    glBindTexture(GL_TEXTURE_2D, egl.texture);
+    glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, image);
+    glBindFramebuffer(GL_FRAMEBUFFER, egl.fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, egl.texture, 0);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        qCWarning(KRFB_FB_PIPEWIRE) << "downloadFrame: framebuffer incomplete";
+        return false;
+    }
+
+    // Read with GL_BGRA → byte order B,G,R,A matches QImage::Format_RGB32 on LE
+    glReadPixels(0, 0, dmabuf.width, dmabuf.height, GL_BGRA, GL_UNSIGNED_BYTE, qimage.bits());
+
+    // glReadPixels reads from bottom-left; QImage expects top-left → flip rows
+    int stride = qimage.bytesPerLine();
+    int h = dmabuf.height;
+    auto tmpRow = std::make_unique<uchar[]>(stride);
+    for (int y = 0; y < h / 2; y++) {
+        uchar *top = qimage.scanLine(y);
+        uchar *bot = qimage.scanLine(h - 1 - y);
+        memcpy(tmpRow.get(), top, stride);
+        memcpy(top, bot, stride);
+        memcpy(bot, tmpRow.get(), stride);
+    }
+
+    return true;
 }
 
 PWFrameBuffer::PWFrameBuffer(QObject *parent)
