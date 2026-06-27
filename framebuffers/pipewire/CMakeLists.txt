@@ -56,6 +56,8 @@ else()
 endif()
 set_property(TARGET krfb_framebuffer_pw PROPERTY C_STANDARD 99)
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(EPOXY IMPORTED_TARGET epoxy)
 target_link_libraries(krfb_framebuffer_pw
                       Qt::Core
                       Qt::Gui
@@ -63,6 +65,7 @@ target_link_libraries(krfb_framebuffer_pw
                       KF6::CoreAddons
                       KF6::ConfigCore
                       PkgConfig::PipeWire
+                      PkgConfig::EPOXY
                       Plasma::KWaylandClient
                       Wayland::Client
                       krfbprivate
