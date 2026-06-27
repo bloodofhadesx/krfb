@@ -21,6 +21,7 @@
 #include <QRandomGenerator>
 #include <QScreen>
 #include <QSocketNotifier>
+#include <qpa/qplatformnativeinterface.h>
 
 #include <KConfigGroup>
 #include <KSharedConfig>
