@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build in Debian Trixie ARM64 container
+      - name: Build in Debian Trixie ARM64 container + produce DEBs
         run: |
           docker run --rm -v "$PWD":/src -w /src arm64v8/debian:trixie-slim \
             bash -c "
@@ -41,13 +41,12 @@ jobs:
                 libwayland-bin &&
               cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr &&
               cmake --build build -j\$(nproc) &&
-              cmake --install build --prefix /usr &&
-              mkdir -p /out &&
-              cp -r /usr/bin/krfb* /usr/lib/aarch64-linux-gnu/qt6/plugins/krfb/ /usr/share/krfb /out/ 2>/dev/null || true
+              cpack -G DEB -B build &&
+              cp build/*.deb /src/
             "
 
-      - name: Upload artifacts
+      - name: Upload .deb artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: krfb-trixie-arm64
-          path: /out/
+          name: krfb-trixie-arm64-debs
+          path: "*.deb"

@@ -123,3 +123,18 @@ ecm_qt_install_logging_categories(
 )
 
 feature_summary(WHAT ALL INCLUDE_QUIET_PACKAGES FATAL_ON_MISSING_REQUIRED_PACKAGES)
+
+# CPack DEB packaging
+set(CPACK_GENERATOR "DEB")
+set(CPACK_PACKAGE_NAME "krfb")
+set(CPACK_PACKAGE_VERSION "${RELEASE_SERVICE_VERSION}")
+set(CPACK_PACKAGE_VERSION_MAJOR "${RELEASE_SERVICE_VERSION_MAJOR}")
+set(CPACK_PACKAGE_VERSION_MINOR "${RELEASE_SERVICE_VERSION_MINOR}")
+set(CPACK_PACKAGE_VERSION_PATCH "${RELEASE_SERVICE_VERSION_MICRO}")
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "KDE Developers <kde-devel@kde.org>")
+set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "Desktop Sharing utility")
+set(CPACK_DEBIAN_PACKAGE_SECTION "kde")
+set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6 (>= 2.17), libqt6core6 (>= 6.5.0), libqt6gui6 (>= 6.5.0), libqt6dbus6 (>= 6.5.0), libkf6configcore6 (>= 6.2.0), libkf6coreaddons6 (>= 6.2.0), libkf6i18n6 (>= 6.2.0), libkf6dbusaddons6 (>= 6.2.0), libkf6dnssd6 (>= 6.2.0), libkf6notifications6 (>= 6.2.0), libkf6wallet6 (>= 6.2.0), libkf6widgetsaddons6 (>= 6.2.0), libkf6windowsystem6 (>= 6.2.0), libkf6xmlgui6 (>= 6.2.0), libkf6crash6 (>= 6.2.0), libkf6statusnotifieritem6 (>= 6.2.0), libx11-6, libxcb1, libvncserver1 (>= 0.9.14), libjpeg62-turbo, libepoxy0, libpipewire-0.3-0, libwayland-client0")
+set(CPACK_DEBIAN_ARCHITECTURE "arm64")
+include(CPack)
