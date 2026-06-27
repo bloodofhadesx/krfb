@@ -21,7 +21,7 @@ jobs:
           apt install -y -qq --no-install-recommends \
             build-essential cmake pkg-config \
             extra-cmake-modules \
-            qt6-base-dev qt6-base-dev-private \
+            qt6-base-dev qt6-base-private-dev \
             libkf6config-dev libkf6coreaddons-dev \
             libkf6i18n-dev libkf6dbusaddons-dev \
             libkf6dnssd-dev libkf6notifications-dev \
