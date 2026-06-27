@@ -26,7 +26,7 @@
 #include <KConfigGroup>
 #include <KSharedConfig>
 
-#include <wayland-client.h>
+struct wl_display;
 #include <KWayland/Client/connection_thread.h>
 #include <KWayland/Client/registry.h>
 
@@ -454,7 +454,7 @@ bool PWFrameBuffer::Private::setupEgl()
 
     // Get the Wayland display from QPA
     auto *native = QGuiApplication::platformNativeInterface();
-    auto *wl_display = native ? static_cast<wl_display *>(native->nativeResourceForIntegration(QByteArrayLiteral("display"))) : nullptr;
+    auto *wl_display = native ? static_cast<struct wl_display *>(native->nativeResourceForIntegration(QByteArrayLiteral("display"))) : nullptr;
 
     EGLDisplay disp = EGL_NO_DISPLAY;
     if (wl_display) {
