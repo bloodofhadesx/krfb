@@ -457,15 +457,14 @@ bool PWFrameBuffer::Private::setupEgl()
     auto *wl_display = native ? static_cast<struct wl_display *>(native->nativeResourceForIntegration(QByteArrayLiteral("display"))) : nullptr;
 
     EGLDisplay disp = EGL_NO_DISPLAY;
-    if (wl_display) {
+    // Try EGL 1.4 first (works on Android/Lindroid where EGL is 1.4)
+    disp = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    if (disp == EGL_NO_DISPLAY && wl_display) {
+        // Fall back to EGL 1.5 Wayland path (desktop Wayland)
         disp = eglGetPlatformDisplay(EGL_PLATFORM_WAYLAND_KHR, wl_display, nullptr);
     }
     if (disp == EGL_NO_DISPLAY) {
         disp = eglGetPlatformDisplay(EGL_PLATFORM_WAYLAND_KHR, EGL_DEFAULT_DISPLAY, nullptr);
-    }
-    if (disp == EGL_NO_DISPLAY) {
-        qCWarning(KRFB_FB_PIPEWIRE) << "setupEgl: no Wayland EGL display, trying default";
-        disp = eglGetDisplay(EGL_DEFAULT_DISPLAY);
     }
     if (disp == EGL_NO_DISPLAY) {
         qCWarning(KRFB_FB_PIPEWIRE) << "setupEgl: failed to get EGL display";
