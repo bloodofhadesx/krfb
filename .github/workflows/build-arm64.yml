@@ -41,8 +41,8 @@ jobs:
                 libwayland-bin &&
               cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr &&
               cmake --build build -j\$(nproc) &&
-              cpack -G DEB -B build &&
-              cp build/*.deb /src/
+              cd build && cpack -G DEB &&
+              cp *.deb /src/
             "
 
       - name: Upload .deb artifacts
