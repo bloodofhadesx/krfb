@@ -203,7 +203,6 @@ rfbScreenInfoPtr RfbServerManager::newScreen()
         rfbLogEnable(KRFB().isDebugEnabled());
 
         screen = rfbGetScreen(nullptr, nullptr, w, h, 8, 3, bpp);
-        screen->tightQualityLevel = KrfbConfig::tightQualityLevel();
         screen->paddedWidthInBytes = d->fb->paddedWidth();
         d->fb->getServerFormat(screen->serverFormat);
         screen->frameBuffer = d->fb->data();

@@ -7,6 +7,7 @@
     SPDX-License-Identifier: GPL-2.0-or-later
 */
 #include "rfbserver.h"
+#include "krfbconfig.h"
 #include "krfbdebug.h"
 #include "rfbservermanager.h"
 #include <QApplication>
@@ -263,6 +264,9 @@ rfbNewClientAction RfbServer::newClientHook(rfbClientPtr cl)
 {
     // qDebug() << "New client";
     auto server = static_cast<RfbServer *>(cl->screen->screenData);
+#if defined(LIBVNCSERVER_HAVE_LIBZ) || defined(LIBVNCSERVER_HAVE_LIBPNG)
+    cl->tightQualityLevel = KrfbConfig::tightQualityLevel();
+#endif
 
     PendingRfbClient *pendingClient = server->newClient(cl);
     connect(pendingClient, &PendingRfbClient::finished,

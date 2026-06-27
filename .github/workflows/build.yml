@@ -34,7 +34,7 @@ jobs:
             libxcb1-dev libxcb-render0-dev libxcb-shape0-dev \
             libxcb-xfixes0-dev libxcb-damage0-dev \
             libxcb-shm0-dev libxcb-image0-dev \
-            libvncserver-dev libjpeg62-turbo-dev \
+            libvncserver-dev libjpeg62-turbo-dev libepoxy-dev \
             libkpipewire-dev kwayland-dev \
             libpipewire-0.3-dev libwayland-dev \
             qt6-wayland-dev plasma-wayland-protocols \
