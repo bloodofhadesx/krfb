@@ -50,4 +50,10 @@
       <default>xcb</default>
     </entry>
   </group>
+  <group name="Encoding">
+    <entry name="tightQualityLevel" type="Int">
+      <label>Tight JPEG quality (1-9, 0=disable JPEG)</label>
+      <default>6</default>
+    </entry>
+  </group>
 </kcfg>
