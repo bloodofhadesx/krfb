@@ -491,7 +491,7 @@ bool PWFrameBuffer::Private::setupEgl()
     EGLint count;
     if (is_gles) {
         const EGLint attribs[] = {
-            EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+            EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
             EGL_RED_SIZE, 8,
             EGL_GREEN_SIZE, 8,
             EGL_BLUE_SIZE, 8,
@@ -504,7 +504,7 @@ bool PWFrameBuffer::Private::setupEgl()
         }
     } else {
         const EGLint attribs[] = {
-            EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+            EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
             EGL_RED_SIZE, 8,
             EGL_GREEN_SIZE, 8,
             EGL_BLUE_SIZE, 8,
@@ -514,7 +514,7 @@ bool PWFrameBuffer::Private::setupEgl()
         if (!eglChooseConfig(disp, attribs, &config, 1, &count)) {
             qCWarning(KRFB_FB_PIPEWIRE) << "setupEgl: no desktop GL config, trying ES3";
             const EGLint es_attribs[] = {
-                EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+                EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
                 EGL_RED_SIZE, 8,
                 EGL_GREEN_SIZE, 8,
                 EGL_BLUE_SIZE, 8,
