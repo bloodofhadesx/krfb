@@ -9,9 +9,7 @@ on:
 
 jobs:
   build-arm64:
-    runs-on: ubuntu-latest
-    container:
-      image: arm64v8/debian:trixie-slim
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
 
