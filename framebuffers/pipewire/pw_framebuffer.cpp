@@ -25,6 +25,7 @@
 #include <KConfigGroup>
 #include <KSharedConfig>
 
+#include <wayland-client.h>
 #include <KWayland/Client/connection_thread.h>
 #include <KWayland/Client/registry.h>
 
